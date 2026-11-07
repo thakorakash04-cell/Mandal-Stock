@@ -107,10 +107,10 @@ def phone_number(value):
     return digits
 def now():return datetime.now(timezone.utc).isoformat()
 def holding_message(name,holdings):
-    lines=[f'Namaste {name},','', 'Mandal stock — items currently with you:','']
-    if holdings:lines += [f'{n}. {h["item_name"]} — {int(h["quantity"])} pcs' for n,h in enumerate(holdings,1)]
-    else:lines += ['No items are currently recorded with you.']
-    lines += ['',f'Total: {sum(int(h["quantity"]) for h in holdings)} pieces','', 'Please check this list and confirm. If anything has been returned or the quantity is different, please inform the mandal admin so the register can be updated.','', 'Thank you. 🙏']
+    lines=[f'નમસ્તે {name},','', 'મંડળનો સામાન — હાલમાં આપની પાસે રહેલા સામાનની યાદી:','']
+    if holdings:lines += [f'{n}. {h["item_name"]} — {int(h["quantity"])} નંગ' for n,h in enumerate(holdings,1)]
+    else:lines += ['હાલમાં આપની પાસે મંડળનો કોઈ સામાન નોંધાયેલ નથી.']
+    lines += ['',f'કુલ: {sum(int(h["quantity"]) for h in holdings)} નંગ','', 'કૃપા કરીને આ યાદી તપાસીને પુષ્ટિ કરશો. કોઈ સામાન પરત આપ્યો હોય અથવા જથ્થામાં તફાવત હોય તો નોંધ સુધારવા માટે મંડળના સંચાલકને જાણ કરશો.','', 'આભાર. 🙏']
     return '\n'.join(lines)
 def whatsapp_link(number,message):return 'https://wa.me/'+phone_number(number)+'?text='+quote(message,safe='')
 def password_hash(password,salt=None):
@@ -127,4 +127,4 @@ def verify_password(password,encoded):
     except (ValueError,TypeError,AttributeError):return False
 
 def return_message(name,item,quantity,returned_at,note,current_holding):
-    return '\n'.join([f'Namaste {name},','', 'Mandal stock — return confirmation','',f'Item: {item}',f'Quantity received back: {int(quantity)} pcs',f'Return recorded: {returned_at}',f'Note: {note or "—"}','',f'Currently outstanding for this item: {int(current_holding)} pcs','(Balance as shown in the register when this message was prepared.)','', 'Thank you for returning the items. Please inform the mandal admin if any detail needs correction. 🙏'])
+    return '\n'.join([f'નમસ્તે {name},','', 'મંડળનો સામાન — સામાન પરત મળ્યાની પુષ્ટિ','',f'સામાન: {item}',f'પરત મળેલો જથ્થો: {int(quantity)} નંગ',f'પરત મળ્યાની નોંધની તારીખ અને સમય: {returned_at}',f'નોંધ: {note or "—"}','',f'આ સામાનમાંથી હાલમાં આપની પાસે બાકી રહેલો જથ્થો: {int(current_holding)} નંગ','(આ સંદેશ તૈયાર કરતી વખતે રજિસ્ટરમાં નોંધાયેલ બાકી જથ્થો.)','', 'સામાન પરત આપવા બદલ આભાર. કોઈ વિગતમાં સુધારો જરૂરી હોય તો મંડળના સંચાલકને જાણ કરશો. 🙏'])
