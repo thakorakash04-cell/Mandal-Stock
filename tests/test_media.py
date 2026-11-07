@@ -1,4 +1,4 @@
-import io, os, sys, tempfile, unittest
+import io, os, sys, tempfile, unittest, json, uuid
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -39,10 +39,16 @@ class PhotoTests(unittest.TestCase):
             def read(store,item_id,photo_version=None):calls.append(item_id);return original(store,item_id,photo_version)
             with patch.object(Store,'photo',read):
                 app=AppTest.from_file(str(Path(__file__).parents[1]/'app.py'),default_timeout=20).run()
-                self.assertEqual(len(app.exception),0);self.assertEqual(len(calls),2)
+                self.assertEqual(len(app.exception),0);self.assertEqual(len(calls),0)
+                app.session_state['samaan_workspace']={'id':str(uuid.uuid4()),'action':'photos','items':[{'id':i['id'],'version':i['photo_version']} for i in db.snapshot()['items']]}
+                app.run();self.assertEqual(len(calls),2)
                 app.run();self.assertEqual(len(calls),2)
                 db.replace_photo(first['id'],blue,admin=True)
-                next(b for b in app.button if b.label=='↻ Refresh').click().run()
+                app.session_state['samaan_workspace']={'id':str(uuid.uuid4()),'action':'refresh'}
+                app.run()
+                new=next(i for i in db.snapshot()['items'] if i['id']==first['id'])
+                app.session_state['samaan_workspace']={'id':str(uuid.uuid4()),'action':'photos','items':[{'id':new['id'],'version':new['photo_version']}]}
+                app.run()
                 self.assertEqual(len(app.exception),0);self.assertEqual(calls.count(first['id']),2);self.assertEqual(calls.count(second['id']),1)
                 # Cached bytes remain usable when PostgreSQL reads are unavailable.
                 with patch.object(Store,'photo',side_effect=RuntimeError('offline')):
@@ -58,3 +64,4 @@ st.write(len(cached_photo(os.environ['DATABASE_URL'],'seeded','content-hash')))
             self.assertEqual([m.value for m in seeded.markdown],['`6`','`6`'])
 
 if __name__=='__main__':unittest.main()
+

@@ -1,6 +1,6 @@
 # Samaan · Mandal Stock
 
-A mobile-friendly Streamlit register for a mandal of 15–20 people. It follows the Samaan design: warm paper background, green sidebar, terracotta actions, serif headings, inventory cards and clear quantity summaries.
+A mobile-friendly Streamlit register for a mandal of 15–20 people. The original ChatGPT Samaan website layout is rendered by the local `frontend/` component: the same sage sidebar, compact header, warm paper background, terracotta actions, serif headings, joined summary cards, inventory grid and modal dialogs. Phones use bottom navigation. Standard Streamlit page controls are replaced by this website interface.
 
 ## What members can do without login
 
@@ -64,4 +64,9 @@ For disposable local testing only, set `ALLOW_LOCAL_SQLITE = true` and `DATABASE
 
 The transaction service locks the relevant inventory row in PostgreSQL (SQLite uses an immediate write transaction in local tests), rechecks stock/holder balances within the transaction, and commits one ledger entry. Unique operation IDs make retries idempotent. Visitors have no write controls and every write path also checks the admin session. Failed admin logins are throttled across sessions; sessions expire after 30 minutes idle or 8 hours absolute.
 
-Database tests cover over-issues, over-returns, partial/full returns, repeated submissions, competing handovers, paused members, phone privacy and admin guards. Streamlit AppTest checks public navigation, copyable messages and admin login controls. Production PostgreSQL deployment should be smoke-tested with your configured database before recording real inventory.
+Database tests cover over-issues, over-returns, partial/full returns, repeated submissions, competing handovers, paused members, phone privacy and admin guards. Streamlit AppTest exercises the actual component event bridge: public payloads, admin sign-in, handover, return and sign-out. Server boundary tests also reject forged admin flags, expired sessions and repeated events. Browser visual checks use the same frontend files with disposable fixture data; they do not exercise a hosted Streamlit database. Production PostgreSQL deployment should be smoke-tested with your configured database before recording real inventory.
+
+
+## Interface architecture
+
+`app.py` hosts the local Streamlit component and retains the existing metadata/photo caches. `frontend/index.html`, `frontend/style.css` and `frontend/app.js` render the original Samaan layout and send explicit actions to Python. `controller.py` verifies server-side admin session state before invoking any mutation; client role flags never authorize changes. Search, filters, dialogs and navigation run in the browser. History pages are queried only when requested, and photos are requested only when the browser lacks their versioned cache. No Node build step, JavaScript CDN, extra secrets or new database schema is required for the layout restoration.

@@ -47,19 +47,23 @@ class RegisterTests(unittest.TestCase):
         for _ in range(5):self.assertFalse(self.db.authenticate('admin','incorrect','admin',hashed)[0])
         self.assertIn('Too many',self.db.authenticate('admin','a-safe-test-password','admin',hashed)[1])
     def test_streamlit_public_and_admin(self):
+        import json
         from streamlit.testing.v1 import AppTest
         os.environ.update(DATABASE_URL=self.url,ALLOW_LOCAL_SQLITE='true',ADMIN_USERNAME='admin',ADMIN_PASSWORD='test-password-long')
         app=AppTest.from_file(str(Path(__file__).parents[1]/'app.py'),default_timeout=20).run()
         self.assertEqual(len(app.exception),0)
-        labels=[b.label for b in app.button];self.assertNotIn('Hand over',labels);self.assertNotIn('Return',labels)
-        app.radio[0].set_value('Share my list').run();app.selectbox[0].select(m:=self.db.snapshot()['members'][0]).run()
-        self.assertEqual(len(app.exception),0);self.assertIn('નમસ્તે',app.code[0].value)
-        app.radio[0].set_value('Admin').run()
-        app.text_input[0].set_value('admin');app.text_input[1].set_value('test-password-long')
-        next(b for b in app.button if b.label=='Sign in').click().run()
-        self.assertEqual(len(app.exception),0);self.assertTrue(app.session_state['admin_ok'])
-        self.assertIn('＋ Add member',[b.label for b in app.button])
-        app.radio[0].set_value('Inventory').run();self.assertIn('Hand over',[b.label for b in app.button])
-        self.assertEqual(len(app.exception),0)
+        def payload():return json.loads(app.get('component_instance')[0].proto.json_args)['data']
+        public=payload();self.assertFalse(public['admin']);self.assertNotIn('whatsapp',public['members'][0])
+        self.assertIn('નમસ્તે',public['messages'][self.member]['text'])
+        app.session_state['samaan_workspace']={'id':str(uuid.uuid4()),'action':'login','username':'admin','password':'test-password-long'}
+        app.run();self.assertEqual(len(app.exception),0);self.assertTrue(payload()['admin'])
+        self.assertIn('whatsapp',payload()['members'][0])
+        app.session_state['samaan_workspace']={'id':str(uuid.uuid4()),'action':'issue','item_id':self.item,'member_id':self.member,'quantity':3,'note':'Event'}
+        app.run();self.assertEqual(len(app.exception),0);self.assertEqual(payload()['holdings'][0]['quantity'],3)
+        app.session_state['samaan_workspace']={'id':str(uuid.uuid4()),'action':'return','item_id':self.item,'member_id':self.member,'quantity':1,'note':'Good'}
+        app.run();self.assertEqual(len(app.exception),0);self.assertIn('પરત મળેલો જથ્થો: 1',payload()['receipt']['text'])
+        app.session_state['samaan_workspace']={'id':str(uuid.uuid4()),'action':'logout'}
+        app.run();self.assertFalse(payload()['admin']);self.assertIsNone(payload()['receipt']);self.assertNotIn('whatsapp',payload()['members'][0])
 
 if __name__=='__main__':unittest.main()
+
