@@ -5,6 +5,7 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image, ImageOps
 from store import Store, holding_message, return_message, whatsapp_link
+from media import compress_photo, cached_photo
 
 st.set_page_config(page_title='Samaan · Mandal Stock',page_icon='📦',layout='wide')
 st.markdown('<style>'+Path(__file__).with_name('style.css').read_text()+'</style>',unsafe_allow_html=True)
@@ -43,8 +44,6 @@ admin=authorized()
 # Separate cache entries prevent admin phone numbers from reaching public sessions.
 @st.cache_data(ttl=30,max_entries=4,show_spinner=False)
 def snapshot(database_url,admin_view):return db.snapshot(admin=admin_view)
-@st.cache_data(ttl=3600,max_entries=100,show_spinner=False)
-def photo(database_url,item_id):return db.photo(item_id)
 
 def refresh():snapshot.clear();st.rerun()
 def notify(message):st.session_state.notice=message;refresh()
@@ -54,16 +53,24 @@ def share_block(message,number='',key='message'):
     if admin and number:st.link_button('Open in WhatsApp',whatsapp_link(number,message),icon=':material/chat:')
 
 def compressed_photo(upload):
-    if upload is None:return None
-    if upload.size>10_000_000:raise ValueError('Choose a photo under 10 MB.')
-    with Image.open(upload) as original:
-        im=ImageOps.exif_transpose(original).convert('RGB');im.thumbnail((1000,1000))
-        for quality in (75,60,45):
-            out=io.BytesIO();im.save(out,format='JPEG',quality=quality,optimize=True)
-            if len(out.getvalue())<=200_000:return out.getvalue()
-        im.thumbnail((600,600));out=io.BytesIO();im.save(out,format='JPEG',quality=50,optimize=True)
-        if len(out.getvalue())>200_000:raise ValueError('Photo is too detailed. Please choose a smaller photo.')
-        return out.getvalue()
+    return compress_photo(upload.getvalue()) if upload is not None else None
+
+def seed_photo(result,image):
+    if image is not None:cached_photo(url,result['id'],result['photo_version'],_uploaded=image)
+
+@st.dialog('Change item photo')
+def replace_photo_dialog(item_id):
+    require_admin()
+    with st.form('replace_photo'):
+        image=st.file_uploader('New item photo',type=['jpg','jpeg','png','webp'])
+        st.caption('Automatically resized to 720 px or smaller and under 60 KB.')
+        if st.form_submit_button('Save photo',type='primary',use_container_width=True):
+            try:
+                payload=compressed_photo(image)
+                result=db.replace_photo(item_id,payload,admin=require_admin())
+                seed_photo(result,payload);notify('Photo updated. Other cached photos are kept.')
+            except (ValueError,PermissionError) as e:st.error(str(e))
+            except Exception:st.error('Could not update this photo. Please try another image.')
 
 @st.dialog('Add an item')
 def add_item_dialog():
@@ -73,9 +80,13 @@ def add_item_dialog():
         category=st.selectbox('Category',['General','Utensils','Furniture','Decorations','Sound & lights'])
         qty=st.number_input('Quantity we have',min_value=1,max_value=100000,step=1)
         image=st.file_uploader('Item photo (optional)',type=['jpg','jpeg','png','webp'])
+        st.caption('Photos are automatically reduced to 720 px or smaller and under 60 KB.')
         note=st.text_area('Storage location / notes',max_chars=500)
         if st.form_submit_button('Add to inventory',type='primary',use_container_width=True):
-            try:db.add_item(name,category,note,int(qty),compressed_photo(image),admin=require_admin());notify('Item added to the collection.')
+            try:
+                payload=compressed_photo(image)
+                result=db.add_item(name,category,note,int(qty),payload,admin=require_admin())
+                seed_photo(result,payload);notify('Item added to the collection.')
             except (ValueError,PermissionError,Image.DecompressionBombError):st.error('Please check the name, quantity and photo. Photo must be a supported image under 10 MB.')
             except Exception:st.error('Could not save the item. Please try again.')
 
@@ -167,7 +178,8 @@ if page=='Inventory':
     for start in range(0,len(found),3):
         for col,item in zip(st.columns(3),found[start:start+3]):
             with col,st.container(border=True):
-                if item['has_photo']:st.image(photo(url,item['id']),use_container_width=True)
+                payload=cached_photo(url,item['id'],item['photo_version']) if item['has_photo'] else None
+                if payload:st.image(payload,use_container_width=True)
                 else:st.markdown('<div class="photo-placeholder">📦</div>',unsafe_allow_html=True)
                 st.caption(item['category'].upper());st.subheader(item['name'])
                 st.markdown(f'**{int(item["available"])}** available · **{int(item["total_qty"]-item["available"])}** with members')
@@ -180,6 +192,7 @@ if page=='Inventory':
                     a,b=st.columns(2)
                     if a.button('Hand over',key='issue'+item['id'],disabled=item['available']<1,use_container_width=True):transaction_dialog(item['id'])
                     if b.button('Return',key='return'+item['id'],disabled=not any(h['item_id']==item['id'] for h in holdings),use_container_width=True):transaction_dialog(item['id'],'return')
+                    if st.button('Change photo',key='photo'+item['id'],use_container_width=True):replace_photo_dialog(item['id'])
 
 elif page in ('Current holders','Share my list'):
     if not members:st.info('No members have been added yet.')

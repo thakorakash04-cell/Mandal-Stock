@@ -44,9 +44,11 @@ Streamlit's hosting-level sharing setting is separate from this app's admin logi
 
 - Metadata snapshots are cached for up to 30 seconds, with immediate cache invalidation after edits and a manual Refresh button.
 - No background polling or scheduled jobs.
-- Photos resize to at most 1,000 px and under 200 KB, cached separately from inventory metadata; no full photo payload on every metadata read.
+- New and replacement photos resize to at most 720 px and under 60 KB, with camera/EXIF metadata removed. Photo bytes are cached separately from inventory metadata using a content version; there is no hourly expiry. A normal refresh, login, handover, return or tab change reuses unchanged photos. Successful uploads seed the cache immediately, avoiding a database read-back. Admin can use **Change photo** on an item; only that photo receives a new cache key.
 - History reads 21 rows per page and displays 20; there is no hidden history cutoff. CSV export covers the displayed page.
 - Up to 25 member records. No paid messaging integrations or external API keys.
+
+The photo cache is persisted to the Streamlit server disk and shared across visitor sessions. It survives ordinary process restarts while that disk remains available. A host rebuild, cache clear or loss of the ephemeral server disk can require a one-time reload from PostgreSQL. Existing photo bytes are unchanged until replaced; the additive photo-version migration sends no image bytes to clients.
 
 A database URL is required for production. This code does not provision a database, transfer old Sites records, or deploy itself to Streamlit. Configure the database secret and Streamlit deployment once.
 

@@ -29,11 +29,17 @@ class Store:
         with self.connect(True) as c:
             for statement in Path(__file__).with_name('schema.sql').read_text().split(';'):
                 if statement.strip():self.execute(c,statement)
+            # Additive, idempotent migration; legacy bytes never leave the server here.
+            if self.local:
+                if 'photo_version' not in {r['name'] for r in self.execute(c,'PRAGMA table_info(mandal_items)').fetchall()}:
+                    self.execute(c,"ALTER TABLE mandal_items ADD COLUMN photo_version TEXT NOT NULL DEFAULT ''")
+            else:self.execute(c,"ALTER TABLE mandal_items ADD COLUMN IF NOT EXISTS photo_version TEXT NOT NULL DEFAULT ''")
+            self.execute(c,"UPDATE mandal_items SET photo_version='legacy:' || id WHERE photo IS NOT NULL AND photo_version=''")
     def _admin(self,admin):
         if admin is not True:raise PermissionError('Admin sign-in is required to change records.')
     def snapshot(self,admin=False):
         with self.connect() as c:
-            items=[dict(r) for r in self.execute(c,"SELECT i.id,i.name,i.category,i.note,i.total_qty,i.created_at,CASE WHEN i.photo IS NULL THEN 0 ELSE 1 END AS has_photo,i.total_qty-COALESCE(SUM(CASE WHEN t.kind='issue' THEN t.quantity ELSE -t.quantity END),0) AS available FROM mandal_items i LEFT JOIN mandal_transactions t ON t.item_id=i.id GROUP BY i.id ORDER BY i.name").fetchall()]
+            items=[dict(r) for r in self.execute(c,"SELECT i.id,i.name,i.category,i.note,i.total_qty,i.created_at,i.photo_version,CASE WHEN i.photo IS NULL THEN 0 ELSE 1 END AS has_photo,i.total_qty-COALESCE(SUM(CASE WHEN t.kind='issue' THEN t.quantity ELSE -t.quantity END),0) AS available FROM mandal_items i LEFT JOIN mandal_transactions t ON t.item_id=i.id GROUP BY i.id ORDER BY i.name").fetchall()]
             fields='id,name,active'+(',whatsapp' if admin else '')
             members=[dict(r) for r in self.execute(c,f'SELECT {fields} FROM mandal_members ORDER BY name').fetchall()]
             holdings=[dict(r) for r in self.execute(c,"SELECT t.item_id,t.member_id,i.name AS item_name,m.name AS member_name,SUM(CASE WHEN t.kind='issue' THEN t.quantity ELSE -t.quantity END) AS quantity FROM mandal_transactions t JOIN mandal_items i ON i.id=t.item_id JOIN mandal_members m ON m.id=t.member_id GROUP BY t.item_id,t.member_id,i.name,m.name HAVING SUM(CASE WHEN t.kind='issue' THEN t.quantity ELSE -t.quantity END)>0 ORDER BY m.name,i.name").fetchall()]
@@ -42,14 +48,25 @@ class Store:
         pattern='%'+search.lower()+'%'
         with self.connect() as c:
             return [dict(r) for r in self.execute(c,"SELECT t.id,t.item_id,t.member_id,t.kind,t.quantity,t.note,t.created_at,i.name AS item,m.name AS holder FROM mandal_transactions t JOIN mandal_items i ON i.id=t.item_id JOIN mandal_members m ON m.id=t.member_id WHERE (LOWER(i.name) LIKE ? OR LOWER(m.name) LIKE ? OR LOWER(t.note) LIKE ?) AND (?='all' OR t.kind=?) ORDER BY t.created_at DESC,t.id DESC LIMIT 21 OFFSET ?",(pattern,pattern,pattern,kind,kind,offset)).fetchall()]
-    def photo(self,item_id):
+    def photo(self,item_id,photo_version=None):
         with self.connect() as c:
-            row=self.execute(c,'SELECT photo FROM mandal_items WHERE id=?',(item_id,)).fetchone()
+            if photo_version is None:row=self.execute(c,'SELECT photo FROM mandal_items WHERE id=?',(item_id,)).fetchone()
+            else:row=self.execute(c,'SELECT photo FROM mandal_items WHERE id=? AND photo_version=?',(item_id,photo_version)).fetchone()
             return bytes(row['photo']) if row and row['photo'] else None
     def add_item(self,name,category,note,quantity,photo=None,admin=False):
         self._admin(admin);name=clean(name,120);quantity=whole(quantity)
-        if photo and len(photo)>200_000:raise ValueError('Photo must be under 200 KB after compression.')
-        with self.connect(True) as c:self.execute(c,'INSERT INTO mandal_items(id,name,category,note,total_qty,photo,created_at) VALUES(?,?,?,?,?,?,?)',(str(uuid.uuid4()),name,clean(category,50),str(note).strip()[:500],quantity,photo,now()))
+        if photo and len(photo)>60_000:raise ValueError('Photo must be under 60 KB after compression.')
+        item_id=str(uuid.uuid4());version=hashlib.sha256(photo).hexdigest() if photo else ''
+        with self.connect(True) as c:self.execute(c,'INSERT INTO mandal_items(id,name,category,note,total_qty,photo,created_at,photo_version) VALUES(?,?,?,?,?,?,?,?)',(item_id,name,clean(category,50),str(note).strip()[:500],quantity,photo,now(),version))
+        return {'id':item_id,'photo_version':version}
+    def replace_photo(self,item_id,photo,admin=False):
+        self._admin(admin)
+        if not photo or len(photo)>60_000:raise ValueError('Choose a compressed photo under 60 KB.')
+        version=hashlib.sha256(photo).hexdigest()
+        with self.connect(True) as c:
+            result=self.execute(c,'UPDATE mandal_items SET photo=?,photo_version=? WHERE id=?',(photo,version,item_id))
+            if result.rowcount!=1:raise ValueError('Item no longer exists.')
+        return {'id':item_id,'photo_version':version}
     def save_member(self,name,whatsapp,member_id=None,active=True,admin=False):
         self._admin(admin);name=clean(name,80);phone=phone_number(whatsapp)
         with self.connect(True) as c:
