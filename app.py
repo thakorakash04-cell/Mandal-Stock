@@ -53,11 +53,21 @@ try:
 except Exception:
     payload={'admin':False,'items':[],'members':[],'holdings':[],'history':[],'historyPage':1,'historyHasMore':False,'messages':{},'receipt':None,'mandalName':config.get('MANDAL_NAME') or 'Our mandal','adminConfigured':False,'setupNeeded':True}
 
-workspace=components.declare_component('samaan_workspace',path=str(Path(__file__).with_name('frontend')))
-event=workspace(data=payload,response=st.session_state.get('web_response'),key='samaan_workspace',default=None)
-response,changed=handle_event(db,event,st.session_state,config,load_photo,seed_photo)
+if st.query_params.get('mandal_native') == '1':
+    # Android uses the existing Streamlit session for transport only. It renders
+    # its own native screens; the normal website component is never loaded here.
+    from native_protocol import handle_native_request
+    workspace=components.declare_component('samaan_native_connection',path=str(Path(__file__).with_name('native_bridge')))
+    event=workspace(data=payload,response=st.session_state.get('native_response'),client=str(st.query_params.get('native_client',''))[:80],key='samaan_native_connection',default=None)
+    response,changed=handle_native_request(db,event,st.session_state,config,load_photo,seed_photo)
+    response_key='native_response'
+else:
+    workspace=components.declare_component('samaan_workspace',path=str(Path(__file__).with_name('frontend')))
+    event=workspace(data=payload,response=st.session_state.get('web_response'),key='samaan_workspace',default=None)
+    response,changed=handle_event(db,event,st.session_state,config,load_photo,seed_photo)
+    response_key='web_response'
 if response is not None:
-    st.session_state['web_response']=response
+    st.session_state[response_key]=response
     if changed:
         snapshot.clear()
     st.rerun()
