@@ -74,7 +74,7 @@ class Store:
                 self.execute(c,'UPDATE mandal_members SET name=?,whatsapp=?,active=? WHERE id=?',(name,phone,int(active),member_id))
             else:
                 if self.execute(c,'SELECT COUNT(*) AS n FROM mandal_members').fetchone()['n']>=25:raise ValueError('This register supports 25 members.')
-                self.execute(c,'INSERT INTO mandal_members(id,name,whatsapp,active) VALUES(?,?,?,1)',(str(uuid.uuid4()),name,phone))
+                self.execute(c,'INSERT INTO mandal_members(id,name,whatsapp,active) VALUES(?,?,?,?)',(str(uuid.uuid4()),name,phone,int(active)))
     def record(self,item_id,member_id,kind,quantity,note,request_id,admin=False):
         self._admin(admin);quantity=whole(quantity)
         if kind not in ('issue','return'):raise ValueError('Choose handover or return.')

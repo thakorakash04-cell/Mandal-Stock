@@ -10,3 +10,8 @@ __pycache__/
 
 
 .qa/
+
+android/build/
+android/deliverables/
+*.jks
+*.keystore

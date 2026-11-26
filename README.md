@@ -70,3 +70,9 @@ Database tests cover over-issues, over-returns, partial/full returns, repeated s
 ## Interface architecture
 
 `app.py` hosts the local Streamlit component and retains the existing metadata/photo caches. `frontend/index.html`, `frontend/style.css` and `frontend/app.js` render the original Samaan layout and send explicit actions to Python. `controller.py` verifies server-side admin session state before invoking any mutation; client role flags never authorize changes. Search, filters, dialogs and navigation run in the browser. History pages are queried only when requested, and photos are requested only when the browser lacks their versioned cache. No Node build step, JavaScript CDN, extra secrets or new database schema is required for the layout restoration.
+
+## Native Android app using the existing setup
+
+`android/` contains the native Android v3 client (Stock, Holders, History, Admin). It uses the **existing Streamlit website address, database and admin credentials**. No separate backend, new secret or hosting account is needed. See [Android setup](android/README.md).
+
+`native_protocol.py` and `native_bridge/` carry data over the existing Streamlit component session. Android renders its own visible screens; a small invisible WebView carries the data-only connection. The normal website component and layout are unchanged. The bridge uses the same server controller and never treats a client role flag as authorization. Ledger retries reuse durable UUIDs; public phone privacy and login/session rules remain enforced. New-member creation respects the active/paused selection.
